@@ -35,11 +35,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingsModal = document.getElementById('settings-modal');
     const soundNotificationsToggle = document.getElementById('sound-notifications-toggle');
     const toastContainer = document.getElementById('toast-container');
+    const searchInput = document.getElementById('search-input');
+    const searchResultsContainer = document.getElementById('search-results-container');
+    const searchResultsList = document.getElementById('search-results-list');
+    const chatsListContainer = document.getElementById('chats-list-container');
 
     // --- ГЛОБАЛЬНОЕ СОСТОЯНИЕ ---
     let accessToken = null, refreshToken = null, currentUser = null, userSettings = { soundNotifications: true };
     let selectedUserId = null, socket = null;
-    let onlineUsers = new Set(), typingTimeout = null;
+    let onlineUsers = new Set(), typingTimeout = null, searchTimeout = null;
     let peerConnection, localStream, incomingCallData = null;
     let editingMessage = null, replyingToMessage = null;
     let contextMessage = null;
@@ -51,9 +55,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return filename;
         }
         if (!filename || filename === 'default_avatar.png') {
-            // ВАЖНО: Убедитесь, что это правильный URL на ваш аватар по умолчанию в Cloudinary
+            // ВАЖНО: Замените на URL вашего аватара по умолчанию, загруженного в Cloudinary
             return 'https://res.cloudinary.com/dizgoxgrb/image/upload/v1724956329/quantum_uploads/vkjxtxgjkyocglwqfsnp.png';
         }
+        // Этот fallback больше не должен использоваться, но оставим его на всякий случай
         return `https://quantum-6x3h.onrender.com/uploads/${filename}`;
     };
 
@@ -80,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     }
 
-    // Универсальная функция для JSON запросов
+    // Универсальная функция для JSON запросов с автоматическим обновлением токена
     async function apiRequest(url, options = {}) {
         options.headers = {
             'Content-Type': 'application/json',
@@ -117,9 +122,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return res;
     }
     
-    // НОВАЯ ФУНКЦИЯ: Специально для загрузки файлов (FormData)
+    // Специальная функция для загрузки файлов (FormData)
     async function apiUploadRequest(url, options = {}) {
-        // ВАЖНО: НЕ устанавливаем 'Content-Type'. Браузер сделает это сам.
         options.headers = {
             ...(accessToken && { 'Authorization': `Bearer ${accessToken}` })
         };
@@ -129,7 +133,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res.status === 401 && !isRefreshingToken) {
             isRefreshingToken = true;
             try {
-                // ... (логика обновления токена точно такая же) ...
                 const refreshRes = await fetch('https://quantum-6x3h.onrender.com/api/auth/refresh', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -154,7 +157,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return res;
     }
-
 
     function switchAuthForm(to = 'login') {
         loginForm.classList.toggle('hidden', to !== 'login');
@@ -279,80 +281,105 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) { console.error('Ошибка загрузки профиля:', error); showToast('Ошибка загрузки профиля', 'error'); }
     }
     
-    function createPeerConnection() {
-    // --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
-    // Мы добавляем несколько STUN-серверов для надежности и, что самое важное,
-    // бесплатный TURN-сервер, который будет выступать в роли посредника,
-    // если прямое соединение установить невозможно.
-    const iceServers = [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        {
-            urls: 'turn:openrelay.metered.ca:80',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-        },
-        {
-            urls: 'turn:openrelay.metered.ca:443',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-        }
-    ];
+    // --- ЛОГИКА ЗВОНКОВ (WEB RTC) ---
+    // Этот блок полностью переписан с использованием шаблона "Perfect Negotiation"
+    // для максимальной совместимости с мобильными браузерами.
 
-    peerConnection = new RTCPeerConnection({ iceServers: iceServers });
-    
-    // Остальная часть функции остается без изменений
-    peerConnection.onicecandidate = e => { 
-        if (e.candidate) {
-            socket.send(JSON.stringify({ type: 'ice-candidate', receiver_id: selectedUserId, candidate: e.candidate })); 
-        }
-    };
-    peerConnection.ontrack = e => { 
-        remoteVideo.srcObject = e.streams[0]; 
-    };
-    peerConnection.onconnectionstatechange = () => { 
-        if (peerConnection) { 
-            const state = peerConnection.connectionState; 
-            console.log('WebRTC connection state:', state); // Добавим лог для отладки
-            chatHeaderStatus.textContent = `Звонок: ${state}`; 
-            if (state === 'disconnected' || state === 'closed' || state === 'failed') { 
-                hangUp(); 
-            } 
-        } 
-    };
-    if (localStream) {
-        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    function createPeerConnection() {
+        hangUp(); // Завершаем любые предыдущие соединения перед созданием нового
+        
+        const iceServers = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+        ];
+
+        peerConnection = new RTCPeerConnection({ iceServers: iceServers });
+
+        // Обработчик получения медиапотока от удаленного пользователя
+        peerConnection.ontrack = event => {
+            if (remoteVideo.srcObject !== event.streams[0]) {
+                remoteVideo.srcObject = event.streams[0];
+                console.log('Получен удаленный медиапоток!');
+            }
+        };
+
+        // Обработчик получения ICE-кандидатов
+        peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+                socket.send(JSON.stringify({ type: 'ice-candidate', receiver_id: selectedUserId, candidate: event.candidate }));
+            }
+        };
+        
+        // Обработчик изменения состояния соединения
+        peerConnection.onconnectionstatechange = () => {
+            if (peerConnection) {
+                const state = peerConnection.connectionState;
+                console.log('WebRTC connection state:', state);
+                chatHeaderStatus.textContent = `Звонок: ${state}`;
+                if (state === 'disconnected' || state === 'closed' || state === 'failed') {
+                    hangUp();
+                }
+            }
+        };
     }
-}
 
     async function startCall(videoEnabled = false) {
-        if (!selectedUserId || selectedUserId === currentUser.id) return alert('Выберите чат для звонка');
+        if (!selectedUserId || selectedUserId === currentUser.id) return showToast('Выберите чат для звонка', 'error');
+        
         try {
+            createPeerConnection();
+
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: videoEnabled });
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
             localVideo.srcObject = localStream;
+
             toggleVideoBtn.classList.toggle('active', videoEnabled);
             localVideo.style.display = videoEnabled ? 'block' : 'none';
             toggleMicBtn.classList.add('active');
             videoCallContainer.classList.remove('hidden');
             chatContent.classList.add('hidden');
-            createPeerConnection();
+
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
-            socket.send(JSON.stringify({ type: 'call-offer', receiver_id: selectedUserId, offer: offer }));
-        } catch (error) { console.error('Ошибка при начале звонка:', error); alert('Не удалось получить доступ к камере/микрофону.'); }
+            
+            socket.send(JSON.stringify({ type: 'call-offer', receiver_id: selectedUserId, offer }));
+        } catch (error) {
+            console.error('Ошибка при начале звонка:', error);
+            showToast('Не удалось получить доступ к камере/микрофону.', 'error');
+            hangUp();
+        }
     }
 
     function hangUp() {
-        if (peerConnection) { peerConnection.close(); peerConnection = null; }
-        if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
+        if (peerConnection) {
+            peerConnection.close();
+            peerConnection = null;
+        }
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
         remoteVideo.srcObject = null;
         localVideo.srcObject = null;
-        if (selectedUserId && socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'hang-up', receiver_id: selectedUserId }));
+        
+        if (selectedUserId && socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'hang-up', receiver_id: selectedUserId }));
+        }
+        
         videoCallContainer.classList.add('hidden');
-        if (selectedUserId) { chatContent.classList.remove('hidden'); updateUserOnlineStatus(selectedUserId, onlineUsers.has(selectedUserId)); } else { welcomeScreen.classList.remove('hidden'); }
-        closeModal(incomingCallModal); incomingCallData = null;
+        if (selectedUserId) {
+            chatContent.classList.remove('hidden');
+            updateUserOnlineStatus(selectedUserId, onlineUsers.has(selectedUserId));
+        } else {
+            welcomeScreen.classList.remove('hidden');
+        }
+        closeModal(incomingCallModal);
+        incomingCallData = null;
     }
 
+    // --- ЛОГИКА WEBSOCKET ---
     function initWebSocket() {
         if (socket) socket.close();
         socket = new WebSocket(`wss://quantum-6x3h.onrender.com`);
@@ -398,6 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.onclose = () => { console.log('WebSocket соединение закрыто'); };
     }
     
+    // --- УПРАВЛЕНИЕ ВИДАМИ ---
     function showChatView() {
         authView.classList.add('hidden');
         mainView.classList.remove('hidden');
@@ -482,9 +510,51 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('#chat-header .user-info').addEventListener('click', () => { if(selectedUserId && window.innerWidth > 1200) renderProfileSidebar(selectedUserId); });
     audioCallBtn.addEventListener('click', () => startCall(false));
     videoCallBtn.addEventListener('click', () => startCall(true));
-    answerCallBtn.addEventListener('click', async () => { if (!incomingCallData) return; closeModal(incomingCallModal); const chatToSelect = document.querySelector(`#chats-list li[data-user-id='${incomingCallData.sender_id}']`); if(chatToSelect) chatToSelect.click(); try { const constraints = incomingCallData.offer.sdp.includes('m=video') ? { audio: true, video: true } : { audio: true, video: false }; localStream = await navigator.mediaDevices.getUserMedia(constraints); localVideo.srcObject = localStream; toggleVideoBtn.classList.toggle('active', constraints.video); localVideo.style.display = constraints.video ? 'block' : 'none'; toggleMicBtn.classList.add('active'); videoCallContainer.classList.remove('hidden'); chatContent.classList.add('hidden'); createPeerConnection(); await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingCallData.offer)); const answer = await peerConnection.createAnswer(); await peerConnection.setLocalDescription(answer); socket.send(JSON.stringify({ type: 'call-answer', receiver_id: incomingCallData.sender_id, answer: answer })); incomingCallData = null; } catch (error) { console.error("Ошибка при ответе на звонок:", error); } });
-    declineCallBtn.addEventListener('click', () => { if (incomingCallData) { socket.send(JSON.stringify({ type: 'hang-up', receiver_id: incomingCallData.sender_id })); } closeModal(incomingCallModal); incomingCallData = null; });
     
+    answerCallBtn.addEventListener('click', async () => {
+        if (!incomingCallData) return;
+        
+        const { offer, sender_id } = incomingCallData;
+        incomingCallData = null; 
+        closeModal(incomingCallModal);
+
+        const chatToSelect = document.querySelector(`#chats-list li[data-user-id='${sender_id}']`);
+        if (chatToSelect) chatToSelect.click();
+        
+        try {
+            createPeerConnection();
+
+            const constraints = offer.sdp.includes('m=video') ? { audio: true, video: true } : { audio: true, video: false };
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+            localVideo.srcObject = localStream;
+
+            toggleVideoBtn.classList.toggle('active', constraints.video);
+            localVideo.style.display = constraints.video ? 'block' : 'none';
+            toggleMicBtn.classList.add('active');
+            videoCallContainer.classList.remove('hidden');
+            chatContent.classList.add('hidden');
+
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+
+            socket.send(JSON.stringify({ type: 'call-answer', receiver_id: sender_id, answer }));
+        } catch (error) {
+            console.error("Ошибка при ответе на звонок:", error);
+            showToast('Ошибка при ответе на звонок.', 'error');
+            hangUp();
+        }
+    });
+    
+    declineCallBtn.addEventListener('click', () => {
+        if (incomingCallData) {
+            socket.send(JSON.stringify({ type: 'hang-up', receiver_id: incomingCallData.sender_id }));
+        }
+        closeModal(incomingCallModal);
+        incomingCallData = null;
+    });
+
     settingsBtn.addEventListener('click', () => showModal(settingsModal));
     soundNotificationsToggle.addEventListener('change', async (e) => {
         const enabled = e.target.checked;
@@ -564,18 +634,15 @@ document.addEventListener('DOMContentLoaded', () => {
     editProfileForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         try {
-            // Сначала обновляем текстовые данные
             const textUpdateRes = await apiRequest('/api/users/profile', {
                 method: 'PUT',
                 body: JSON.stringify({ username: usernameInput.value, bio: bioInput.value })
             });
             if (!textUpdateRes.ok) throw new Error('Ошибка обновления профиля');
 
-            // Затем, если выбран файл, загружаем аватар
             if (avatarInput.files.length > 0) {
                 const formData = new FormData();
                 formData.append('avatar', avatarInput.files[0]);
-                // ИЗМЕНЕНО: Используем apiUploadRequest для загрузки аватара
                 const avatarUpdateRes = await apiUploadRequest('/api/users/profile/picture', {
                     method: 'PUT',
                     body: formData
@@ -597,11 +664,9 @@ document.addEventListener('DOMContentLoaded', () => {
     changePasswordForm.addEventListener('submit', async(e) => { e.preventDefault(); const oldPassword = changePasswordForm.querySelector('#old-password-input').value, newPassword = changePasswordForm.querySelector('#new-password-input').value; const res = await apiRequest('/api/users/password', { method: 'PUT', body: JSON.stringify({ oldPassword, newPassword }) }); const data = await res.json(); if (!res.ok) return showToast(data.message, 'error'); showToast('Пароль успешно изменен!', 'success'); closeModal(changePasswordModal); changePasswordForm.reset(); });
     
     document.body.addEventListener('change', async (e) => {
-        // Загрузка фото в галерею
         if (e.target.matches('#photo-upload-input') && e.target.files.length > 0) {
             const formData = new FormData();
             formData.append('photo', e.target.files[0]);
-            // ИЗМЕНЕНО: Используем apiUploadRequest для загрузки фото в галерею
             const res = await apiUploadRequest('/api/photos', { method: 'POST', body: formData });
             if (res.ok) {
                 showToast('Фото загружено!', 'success');
@@ -611,11 +676,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             e.target.value = '';
         }
-        // Загрузка фото в сообщение
         if (e.target.matches('#image-upload-input') && e.target.files.length > 0) {
             const formData = new FormData();
             formData.append('photo', e.target.files[0]);
-            // ИЗМЕНЕНО: Используем apiUploadRequest для загрузки фото в сообщение
             const res = await apiUploadRequest('/api/photos', { method: 'POST', body: formData });
             if (!res.ok) return showToast('Ошибка загрузки', 'error');
             const data = await res.json();
@@ -629,6 +692,56 @@ document.addEventListener('DOMContentLoaded', () => {
     emojiBtn.addEventListener('click', (event) => { event.stopPropagation(); emojiPickerContainer.classList.toggle('hidden'); });
     document.querySelector('emoji-picker').addEventListener('emoji-click', event => { messageInput.value += event.detail.unicode; messageInput.focus(); });
     document.addEventListener('click', (event) => { if (!emojiPickerContainer.contains(event.target) && !emojiBtn.contains(event.target)) { emojiPickerContainer.classList.add('hidden'); } });
+
+    // --- ЛОГИКА ПОИСКА ---
+    function renderSearchResults(users) {
+        searchResultsList.innerHTML = '';
+        if (users.length === 0) {
+            searchResultsList.innerHTML = '<li>Пользователи не найдены.</li>';
+            return;
+        }
+
+        users.forEach(user => {
+            const li = document.createElement('li');
+            li.dataset.userId = user.id;
+            li.innerHTML = `<div class="list-item-avatar"><img src="${getAvatarUrl(user.profile_picture_url)}" class="avatar" alt="${user.username}"></div><div class="list-item-details"><span class="username">${user.username}</span></div>`;
+            
+            li.addEventListener('click', () => {
+                selectChat(user);
+                searchInput.value = '';
+                searchResultsContainer.classList.add('hidden');
+                chatsListContainer.classList.remove('hidden');
+            });
+            searchResultsList.appendChild(li);
+        });
+    }
+    
+    searchInput.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        const query = searchInput.value.trim();
+
+        if (!query) {
+            searchResultsContainer.classList.add('hidden');
+            chatsListContainer.classList.remove('hidden');
+            return;
+        }
+
+        searchTimeout = setTimeout(async () => {
+            try {
+                const res = await apiRequest(`/api/users/search?q=${query}`);
+                if (!res.ok) throw new Error('Search failed');
+                const users = await res.json();
+                
+                chatsListContainer.classList.add('hidden');
+                searchResultsContainer.classList.remove('hidden');
+                renderSearchResults(users);
+
+            } catch (error) {
+                console.error("Ошибка поиска:", error);
+                showToast('Не удалось выполнить поиск', 'error');
+            }
+        }, 300);
+    });
 
     // --- ИНИЦИАЛИЗАЦИЯ ---
     const savedAccessToken = localStorage.getItem('accessToken');

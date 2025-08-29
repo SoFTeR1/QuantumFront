@@ -62,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function showToast(message, type = 'info') { const toast = document.createElement('div'); toast.className = `toast ${type}`; toast.textContent = message; toastContainer.appendChild(toast); setTimeout(() => toast.remove(), 4000); }
     function showChatSkeletons() { chatsList.innerHTML = Array(8).fill(0).map(() => `<li class="chat-skeleton-item"><div class="skeleton skeleton-avatar"></div><div class="skeleton-text-group"><div class="skeleton skeleton-text long"></div><div class="skeleton skeleton-text short"></div></div></li>`).join(''); }
 
-    // --- API ЗАПРОСЫ ---
+     // --- API ЗАПРОСЫ ---
     async function apiRequest(url, options = {}) {
         options.headers = { 'Content-Type': 'application/json', ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }) };
         let res = await fetch(`https://quantum-6x3h.onrender.com${url}`, options);
@@ -229,11 +229,23 @@ document.addEventListener('DOMContentLoaded', () => {
     function createPeerConnection() {
         if (peerConnection) { peerConnection.close(); }
         iceCandidateQueue = [];
+        
+        // --- ОБНОВЛЕННЫЙ НАБОР ICE СЕРВЕРОВ ДЛЯ МАКСИМАЛЬНОЙ НАДЕЖНОСТИ ---
         const iceServers = [
-            { urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:global.stun.twilio.com:3478" },
+            {
+                urls: "turn:gturn.browser.mi-rtc.com:3478",
+                username: "mi-rtc-readonly-user",
+                credential: "mi-rtc-readonly-user",
+            },
+            {
+                urls: "turn:turn.metered.ca:80",
+                username: "openrelayproject",
+                credential: "openrelayproject",
+            },
         ];
+
         peerConnection = new RTCPeerConnection({ iceServers });
         peerConnection.ontrack = event => { if (remoteVideo.srcObject !== event.streams[0]) { remoteVideo.srcObject = event.streams[0]; remoteAvatarPlaceholder.classList.add('hidden'); } };
         peerConnection.onicecandidate = event => { if (event.candidate) { socket.send(JSON.stringify({ type: 'ice-candidate', receiver_id: selectedUserId, candidate: event.candidate })); } };
@@ -285,6 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
         incomingCallData = null;
     }
     async function processIceCandidateQueue() {
+        if (!peerConnection || !peerConnection.remoteDescription) return;
         while (iceCandidateQueue.length > 0) { const candidate = iceCandidateQueue.shift(); try { await peerConnection.addIceCandidate(candidate); } catch (e) { console.error("Ошибка при добавлении ICE-кандидата из очереди:", e); } }
     }
     

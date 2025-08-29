@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Messenger</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/feather-icons"></script>
+</head>
+<body>
+
+    <div class="background-gradient"></div>
+
+    <div id="app-container">
+
+        <div id="auth-view">
+            <div class="auth-form-container">
+                <div class="auth-header"><h2 id="auth-title">Вход в Quantum</h2><p id="auth-subtitle">или <a href="#" id="switch-auth-link">создайте аккаунт</a></p></div>
+                <form id="login-form"><input type="email" id="login-email" placeholder="Email" required><input type="password" id="login-password" placeholder="Пароль" required><button type="submit">Войти</button></form>
+                <form id="register-form" class="hidden"><input type="text" id="username" placeholder="Имя пользователя" required><input type="email" id="email" placeholder="Email" required><input type="password" id="password" placeholder="Пароль" required><button type="submit">Создать</button></form>
+            </div>
+        </div>
+
+        <div id="main-view" class="hidden">
+            <aside id="sidebar">
+                <div class="sidebar-header">
+                     <button id="burger-btn" class="icon-btn hidden"><i data-feather="menu"></i></button>
+                    <div class="branding">
+                        <div class="status-indicator"></div>
+                        <span class="brand-name">Quantum</span>
+                    </div>
+                    <input type="text" id="search-input" placeholder="Поиск...">
+                </div>
+                <div id="chats-list-container"><h3>Чаты</h3><ul id="chats-list" class="entity-list"></ul></div>
+                <!-- НОВОЕ: Кнопка настроек добавлена рядом с выходом -->
+                <div class="sidebar-footer">
+                    <button id="settings-button" class="icon-btn" title="Настройки"><i data-feather="settings"></i></button>
+                    <button id="logout-button" class="icon-btn" title="Выйти"><i data-feather="log-out"></i></button>
+                </div>
+            </aside>
+
+            <main id="chat-window">
+                <div id="video-call-container" class="hidden">
+                    <video id="remote-video" autoplay playsinline></video>
+                    <video id="local-video" autoplay playsinline muted></video>
+                    <div class="call-controls">
+                        <button id="toggle-mic-btn" class="icon-btn call-control-btn active" title="Выключить микрофон"><i data-feather="mic"></i></button>
+                        <button id="toggle-video-btn" class="icon-btn call-control-btn active" title="Выключить камеру"><i data-feather="video"></i></button>
+                        <button id="hang-up-btn" class="icon-btn call-control-btn decline" title="Завершить звонок"><i data-feather="phone-off"></i></button>
+                    </div>
+                </div>
+
+                <div id="welcome-screen"><i data-feather="message-circle" class="welcome-icon"></i><h2>Выберите чат</h2><p>Начните общение или просмотрите профили ваших контактов.</p></div>
+                
+                <div id="chat-content" class="hidden">
+                    <div id="chat-header">
+                        <button id="back-to-chats-btn" class="icon-btn hidden"><i data-feather="arrow-left"></i></button>
+                        <div class="user-info"><img src="" alt="" class="avatar" id="chat-header-avatar"><div><h2 id="chat-header-username"></h2><span id="chat-header-status"></span></div></div>
+                        <div id="call-actions">
+                            <button id="audio-call-btn" class="icon-btn" title="Аудиозвонок"><i data-feather="phone"></i></button>
+                            <button id="video-call-btn" class="icon-btn" title="Видеозвонок"><i data-feather="video"></i></button>
+                            <button id="profile-info-btn" class="icon-btn hidden" title="Информация"><i data-feather="info"></i></button>
+                        </div>
+                    </div>
+                    <div id="messages-container"></div>
+                    <div id="typing-indicator"></div>
+                    <div id="reply-preview-bar" class="hidden">
+                        <div class="reply-content"><strong>Ответ на:</strong><p id="reply-text-preview"></p></div>
+                        <button id="cancel-reply-btn" class="icon-btn"><i data-feather="x"></i></button>
+                    </div>
+                    <form id="message-form">
+                        <button type="button" id="attach-file-btn" class="icon-btn" title="Прикрепить фото"><i data-feather="paperclip"></i></button>
+                        <input type="file" id="image-upload-input" class="hidden" accept="image/*">
+                        <div class="input-wrapper">
+                            <input type="text" id="message-input" placeholder="Напишите сообщение..." autocomplete="off" required>
+                            <button type="button" id="emoji-btn" class="icon-btn" title="Эмодзи"><i data-feather="smile"></i></button>
+                        </div>
+                        <button type="submit" class="icon-btn send-btn" title="Отправить"><i data-feather="send"></i></button>
+                        <div id="emoji-picker-container" class="hidden"><emoji-picker></emoji-picker></div>
+                    </form>
+                </div>
+            </main>
+            <aside id="profile-sidebar"></aside>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНЫЕ ОКНА -->
+    <div id="profile-modal-mobile" class="hidden">
+        <div class="profile-sidebar-header">
+            <button id="close-profile-modal-btn" class="icon-btn"><i data-feather="arrow-left"></i></button>
+            <h3>Профиль</h3>
+        </div>
+        <div id="profile-modal-content" class="profile-sidebar-content"></div>
+    </div>
+    <div id="edit-message-modal" class="modal-overlay hidden"><div class="modal-content"><button class="modal-close-btn icon-btn"><i data-feather="x"></i></button><h2>Редактировать сообщение</h2><textarea id="edit-message-input" rows="4"></textarea><div class="modal-actions"><button id="save-edited-message-btn" class="button-primary">Сохранить</button></div></div></div>
+    <div id="incoming-call-modal" class="modal-overlay hidden"><div class="modal-content call-modal"><h2>Входящий звонок</h2><p>Вам звонит <span id="caller-name"></span></p><div class="modal-actions"><button id="answer-call-btn" class="button-answer"><i data-feather="phone"></i>Ответить</button><button id="decline-call-btn" class="button-decline"><i data-feather="phone-off"></i>Отклонить</button></div></div></div>
+    <div id="photo-viewer-modal" class="modal-overlay hidden"><img src="" id="photo-viewer-img" alt="Просмотр фото"><button id="photo-viewer-close" class="modal-close-btn icon-btn"><i data-feather="x"></i></button></div>
+    <div id="edit-profile-modal" class="modal-overlay hidden"><div class="modal-content"><button class="modal-close-btn icon-btn"><i data-feather="x"></i></button><h2>Редактирование профиля</h2><form id="edit-profile-form"><div class="avatar-upload"><img src="" alt="Аватар" id="avatar-preview" class="avatar"><label for="avatar-input" class="avatar-upload-label">Сменить фото</label><input type="file" id="avatar-input" accept="image/*"></div><label for="username-input">Имя пользователя</label><input type="text" id="username-input" required><label for="bio-input">О себе</label><textarea id="bio-input" rows="3"></textarea><div class="modal-actions"><button type="submit" class="button-primary">Сохранить</button></div></form></div></div>
+    <div id="change-password-modal" class="modal-overlay hidden"><div class="modal-content"><button class="modal-close-btn icon-btn"><i data-feather="x"></i></button><h2>Смена пароля</h2><form id="change-password-form"><label for="old-password-input">Старый пароль</label><input type="password" id="old-password-input" required><label for="new-password-input">Новый пароль</label><input type="password" id="new-password-input" required><div class="modal-actions"><button type="submit" class="button-primary">Сменить</button></div></form></div></div>
+    
+    <!-- НОВОЕ: Модальное окно настроек -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button class="modal-close-btn icon-btn"><i data-feather="x"></i></button>
+            <h2>Настройки</h2>
+            <div class="setting-item">
+                <label for="sound-notifications-toggle">Звуковые уведомления</label>
+                <label class="switch">
+                    <input type="checkbox" id="sound-notifications-toggle">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+    
+    <ul id="message-context-menu" class="context-menu hidden">
+        <li data-action="reply">Ответить</li>
+        <li data-action="edit">Редактировать</li>
+        <li data-action="delete">Удалить</li>
+    </ul>
+
+    <!-- НОВОЕ: Контейнер для всплывающих уведомлений -->
+    <div id="toast-container"></div>
+    
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
+    <audio id="notification-sound" src="notification.mp3" preload="auto"></audio>
+    <script src="script.js"></script>
+</body>
+</html>

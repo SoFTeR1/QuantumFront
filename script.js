@@ -1,9 +1,8 @@
-// frontend/script.js
+// frontend/script.js (ФИНАЛЬНАЯ ВЕРСИЯ)
 document.addEventListener('DOMContentLoaded', () => {
     feather.replace();
 
     // --- DOM ЭЛЕМЕНТЫ ---
-    // (весь блок с DOM элементами остается таким же, но добавлены новые)
     const authView = document.getElementById('auth-view'), mainView = document.getElementById('main-view');
     const loginForm = document.getElementById('login-form'), registerForm = document.getElementById('register-form');
     const switchAuthLink = document.getElementById('switch-auth-link'), authTitle = document.getElementById('auth-title'), authSubtitle = document.getElementById('auth-subtitle');
@@ -32,40 +31,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const incomingCallModal = document.getElementById('incoming-call-modal'), callerNameSpan = document.getElementById('caller-name');
     const answerCallBtn = document.getElementById('answer-call-btn'), declineCallBtn = document.getElementById('decline-call-btn');
     const messageContextMenu = document.getElementById('message-context-menu');
-    // НОВЫЕ DOM ЭЛЕМЕНТЫ
     const settingsBtn = document.getElementById('settings-button');
     const settingsModal = document.getElementById('settings-modal');
     const soundNotificationsToggle = document.getElementById('sound-notifications-toggle');
     const toastContainer = document.getElementById('toast-container');
 
     // --- ГЛОБАЛЬНОЕ СОСТОЯНИЕ ---
-    // ИЗМЕНЕНО: токен разделен на accessToken и refreshToken
     let accessToken = null, refreshToken = null, currentUser = null, userSettings = { soundNotifications: true };
     let selectedUserId = null, socket = null;
     let onlineUsers = new Set(), typingTimeout = null;
     let peerConnection, localStream, incomingCallData = null;
     let editingMessage = null, replyingToMessage = null;
     let contextMessage = null;
-    let isRefreshingToken = false; // Флаг для предотвращения многократного обновления токена
+    let isRefreshingToken = false;
 
     // --- УТИЛИТАРНЫЕ ФУНКЦИИ ---
     const getAvatarUrl = (filename) => {
-    // Если filename уже является полным URL (от Cloudinary), просто возвращаем его
-    if (filename && filename.startsWith('http')) {
-        return filename;
-    }
-    // Если filename пустой или равен 'default_avatar.png', возвращаем URL на дефолтный аватар в Cloudinary
-    if (!filename || filename === 'default_avatar.png') {
-        // ВСТАВЬТЕ СЮДА URL ВАШЕГО ДЕФОЛТНОГО АВАТАРА ИЗ CLOUDINARY
-        return 'https://res.cloudinary.com/dxkgvsh77/image/upload/v1756488221/default_avatar_tdilkv.jpg';
-    }
-    // Этот случай больше не должен происходить, но оставим на всякий случай
-    return `https://quantum-6x3h.onrender.com/uploads/${filename}`;
-};
+        if (filename && filename.startsWith('http')) {
+            return filename;
+        }
+        if (!filename || filename === 'default_avatar.png') {
+            // ВАЖНО: Убедитесь, что это правильный URL на ваш аватар по умолчанию в Cloudinary
+            return 'https://res.cloudinary.com/dizgoxgrb/image/upload/v1724956329/quantum_uploads/vkjxtxgjkyocglwqfsnp.png';
+        }
+        return `https://quantum-6x3h.onrender.com/uploads/${filename}`;
+    };
+
     const showModal = (modal) => modal.classList.remove('hidden');
     const closeModal = (modal) => modal.classList.add('hidden');
     
-    // НОВАЯ ФУНКЦИЯ: Показать всплывающее уведомление
     function showToast(message, type = 'info') {
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
@@ -74,7 +68,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => toast.remove(), 4000);
     }
 
-    // НОВАЯ ФУНКЦИЯ: Показать скелетоны загрузки
     function showChatSkeletons() {
         chatsList.innerHTML = Array(8).fill(0).map(() => `
             <li class="chat-skeleton-item">
@@ -87,14 +80,14 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     }
 
-    // ИЗМЕНЕНО: Добавлен API-клиент с автоматическим обновлением токена
+    // Универсальная функция для JSON запросов
     async function apiRequest(url, options = {}) {
-        const getHeaders = () => ({
+        options.headers = {
             'Content-Type': 'application/json',
             ...(accessToken && { 'Authorization': `Bearer ${accessToken}` })
-        });
+        };
         
-        let res = await fetch(`https://quantum-6x3h.onrender.com${url}`, { ...options, headers: getHeaders() });
+        let res = await fetch(`https://quantum-6x3h.onrender.com${url}`, options);
         
         if (res.status === 401 && !isRefreshingToken) {
             isRefreshingToken = true;
@@ -110,12 +103,50 @@ document.addEventListener('DOMContentLoaded', () => {
                 accessToken = data.accessToken;
                 localStorage.setItem('accessToken', accessToken);
                 
-                // Повторяем оригинальный запрос с новым токеном
-                res = await fetch(`https://quantum-6x3h.onrender.com${url}`, { ...options, headers: getHeaders() });
+                options.headers['Authorization'] = `Bearer ${accessToken}`;
+                res = await fetch(`https://quantum-6x3h.onrender.com${url}`, options);
 
             } catch (error) {
                 console.error("Token refresh failed:", error);
-                showAuthView(); // Если обновление не удалось, выходим из системы
+                showAuthView();
+                return null;
+            } finally {
+                isRefreshingToken = false;
+            }
+        }
+        return res;
+    }
+    
+    // НОВАЯ ФУНКЦИЯ: Специально для загрузки файлов (FormData)
+    async function apiUploadRequest(url, options = {}) {
+        // ВАЖНО: НЕ устанавливаем 'Content-Type'. Браузер сделает это сам.
+        options.headers = {
+            ...(accessToken && { 'Authorization': `Bearer ${accessToken}` })
+        };
+        
+        let res = await fetch(`https://quantum-6x3h.onrender.com${url}`, options);
+        
+        if (res.status === 401 && !isRefreshingToken) {
+            isRefreshingToken = true;
+            try {
+                // ... (логика обновления токена точно такая же) ...
+                const refreshRes = await fetch('https://quantum-6x3h.onrender.com/api/auth/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: refreshToken })
+                });
+
+                if (!refreshRes.ok) throw new Error('Session expired');
+                const data = await refreshRes.json();
+                accessToken = data.accessToken;
+                localStorage.setItem('accessToken', accessToken);
+                
+                options.headers['Authorization'] = `Bearer ${accessToken}`;
+                res = await fetch(`https://quantum-6x3h.onrender.com${url}`, options);
+
+            } catch (error) {
+                console.error("Token refresh failed:", error);
+                showAuthView();
                 return null;
             } finally {
                 isRefreshingToken = false;
@@ -134,7 +165,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- ОСНОВНЫЕ ФУНКЦИИ РЕНДЕРИНГА ---
-    // ИЗМЕНЕНО: Использует apiRequest и показывает скелетоны
     async function renderChats() {
         showChatSkeletons();
         try {
@@ -145,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const meRes = await apiRequest('/api/users/me');
             if (!meRes || !meRes.ok) throw new Error('Не удалось загрузить свои данные');
             currentUser = await meRes.json();
-            userSettings = { ...userSettings, ...currentUser.settings }; // Загружаем настройки
+            userSettings = { ...userSettings, ...currentUser.settings };
             soundNotificationsToggle.checked = userSettings.soundNotifications;
 
             localStorage.setItem('user', JSON.stringify(currentUser));
@@ -167,7 +197,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // ... (функция selectChat остается почти такой же, но использует apiRequest для загрузки сообщений)
     async function selectChat(user) {
         if (window.innerWidth <= 768) {
             document.body.classList.add('mobile-chat-view');
@@ -210,7 +239,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // ... (appendMessage остается без изменений)
     function appendMessage(msg, shouldScroll = true) {
         const isSent = msg.sender_id === currentUser.id;
         let existingWrapper = document.querySelector(`.message-wrapper[data-message-id='${msg.id}']`);
@@ -221,7 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (msg.reply_to_content) {
             replyHTML = `<div class="message-reply"><strong>${msg.reply_to_username || '...'}</strong><p>${msg.reply_to_content}</p></div>`;
         }
-        let contentHTML = msg.is_deleted ? `<span class="message-content deleted">Сообщение удалено</span>` : (msg.type === 'image' ? `<img src="${getAvatarUrl(msg.content)}" alt="image" class="message-img">` : `<span class="message-content">${msg.content}</span>`);
+        let contentHTML = msg.is_deleted ? `<span class="message-content deleted">Сообщение удалено</span>` : (msg.type === 'image' ? `<img src="${msg.content}" alt="image" class="message-img">` : `<span class="message-content">${msg.content}</span>`);
         const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const editedMark = msg.is_edited ? ' (изм.)' : '';
         let statusIcon = '';
@@ -237,21 +265,20 @@ document.addEventListener('DOMContentLoaded', () => {
         feather.replace();
     }
 
-    // ИЗМЕНЕНО: renderProfileSidebar использует apiRequest
     async function renderProfileSidebar(userId) {
         try {
             const [userRes, photosRes] = await Promise.all([apiRequest(`/api/users/${userId}`), apiRequest(`/api/users/${userId}/photos`)]);
+            if(!userRes.ok || !photosRes.ok) throw new Error("Failed to load profile");
             const user = await userRes.json();
             const photos = await photosRes.json();
             let actionsHTML = (userId === currentUser.id) ? `<div id="profile-actions"><button class="profile-btn" id="edit-profile-btn">Редактировать</button><button class="profile-btn" id="change-password-btn">Пароль</button></div>` : '';
-            let photosHTML = photos.map(p => `<div class="photo-grid-item"><img src="${getAvatarUrl(p.photo_url)}" alt="photo"></div>`).join('');
+            let photosHTML = photos.map(p => `<div class="photo-grid-item"><img src="${p.photo_url}" alt="photo"></div>`).join('');
             if (userId === currentUser.id) { photosHTML += `<button class="profile-btn" id="upload-photo-btn" style="width:100%; margin-top:12px;">Загрузить фото</button><input type="file" id="photo-upload-input" class="hidden" accept="image/*">`; }
             profileSidebar.innerHTML = `<img src="${getAvatarUrl(user.profile_picture_url)}" alt="${user.username}" class="avatar"><h2>${user.username}</h2><p class="bio">${user.bio||'Нет информации о себе'}</p>${actionsHTML}<div class="profile-section"><h4>Информация</h4><div class="info-item"><span class="info-label">Email</span><span class="info-value">${user.email||'Скрыт'}</span></div></div><div class="profile-section"><h4>Фотографии</h4><div id="profile-photo-grid">${photos.length>0?photosHTML:(userId===currentUser.id?photosHTML:'<p>Нет фото.</p>')}</div></div>`;
             feather.replace();
         } catch (error) { console.error('Ошибка загрузки профиля:', error); showToast('Ошибка загрузки профиля', 'error'); }
     }
-
-    // ... (Функции WebRTC остаются без изменений: createPeerConnection, startCall, hangUp)
+    
     function createPeerConnection() {
         peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
         peerConnection.onicecandidate = e => { if (e.candidate) socket.send(JSON.stringify({ type: 'ice-candidate', receiver_id: selectedUserId, candidate: e.candidate })); };
@@ -259,6 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
         peerConnection.onconnectionstatechange = () => { if (peerConnection) { const state = peerConnection.connectionState; chatHeaderStatus.textContent = `Звонок: ${state}`; if (state === 'disconnected' || state === 'closed' || state === 'failed') { hangUp(); } } };
         if (localStream) localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
     }
+
     async function startCall(videoEnabled = false) {
         if (!selectedUserId || selectedUserId === currentUser.id) return alert('Выберите чат для звонка');
         try {
@@ -275,18 +303,18 @@ document.addEventListener('DOMContentLoaded', () => {
             socket.send(JSON.stringify({ type: 'call-offer', receiver_id: selectedUserId, offer: offer }));
         } catch (error) { console.error('Ошибка при начале звонка:', error); alert('Не удалось получить доступ к камере/микрофону.'); }
     }
+
     function hangUp() {
         if (peerConnection) { peerConnection.close(); peerConnection = null; }
         if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
         remoteVideo.srcObject = null;
         localVideo.srcObject = null;
-        if (selectedUserId && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'hang-up', receiver_id: selectedUserId }));
+        if (selectedUserId && socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'hang-up', receiver_id: selectedUserId }));
         videoCallContainer.classList.add('hidden');
         if (selectedUserId) { chatContent.classList.remove('hidden'); updateUserOnlineStatus(selectedUserId, onlineUsers.has(selectedUserId)); } else { welcomeScreen.classList.remove('hidden'); }
         closeModal(incomingCallModal); incomingCallData = null;
     }
-    
-    // ИЗМЕНЕНО: WebSocket теперь использует accessToken для аутентификации
+
     function initWebSocket() {
         if (socket) socket.close();
         socket = new WebSocket(`wss://quantum-6x3h.onrender.com`);
@@ -307,12 +335,10 @@ document.addEventListener('DOMContentLoaded', () => {
                      if (data.data.sender_id === selectedUserId || (data.data.receiver_id === selectedUserId && data.data.sender_id === currentUser.id)) { 
                         appendMessage(data.data); 
                      } 
-                     // ИЗМЕНЕНО: Проверяем настройку перед воспроизведением звука
                      if (data.data.sender_id !== currentUser.id && document.hidden && userSettings.soundNotifications) { 
                          notificationSound.play().catch(e => {}); 
                      } 
                      break;
-                // ... (остальные case'ы WebSocket остаются без изменений)
                 case 'message_deleted': const msgWrapper = document.querySelector(`.message-wrapper[data-message-id='${data.data.messageId}']`); if(msgWrapper){msgWrapper.querySelector('.message-bubble').innerHTML=`<div class="message-content-wrapper"><span class="message-content deleted">Сообщение удалено</span></div>`;} break;
                 case 'message_edited': const msgToEdit = document.querySelector(`.message-wrapper[data-message-id='${data.data.id}']`); if (msgToEdit) { const content = msgToEdit.querySelector('.message-content'); if(content) content.textContent = data.data.content; const meta = msgToEdit.querySelector('.message-meta span'); if(meta && !meta.textContent.includes('(изм.)')) meta.textContent += ' (изм.)'; } break;
                 case 'typing': if (data.sender_id === selectedUserId) typingIndicator.textContent = 'Печатает...'; break;
@@ -337,6 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function showChatView() {
         authView.classList.add('hidden');
         mainView.classList.remove('hidden');
+        renderChats();
         initWebSocket();
     }
     function showAuthView() {
@@ -358,7 +385,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- ОБРАБОТЧИКИ СОБЫТИЙ ---
     document.getElementById('switch-auth-link').addEventListener('click', (e) => { e.preventDefault(); switchAuthForm('register'); });
     
-    // ИЗМЕНЕНО: Логин сохраняет оба токена
     loginForm.addEventListener('submit', async (e) => { 
         e.preventDefault(); 
         try { 
@@ -400,7 +426,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } 
     });
     
-    // ИЗМЕНЕНО: Выход из системы теперь вызывает API
     logoutButton.addEventListener('click', async () => {
         try {
             await apiRequest('/api/auth/logout', { 
@@ -414,7 +439,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ... (messageForm, messageInput, WebRTC и другие обработчики остаются в основном такими же)
     messageForm.addEventListener('submit', (e) => { e.preventDefault(); const content = messageInput.value.trim(); if (!content || !selectedUserId || !socket) return; socket.send(JSON.stringify({ type: 'message', receiver_id: selectedUserId, content: content, messageType: 'text', reply_to_message_id: replyingToMessage ? replyingToMessage.id : null })); messageInput.value = ''; replyingToMessage = null; replyPreviewBar.classList.add('hidden'); socket.send(JSON.stringify({ type: 'stop_typing', receiver_id: selectedUserId })); });
     messageInput.addEventListener('input', () => { clearTimeout(typingTimeout); socket.send(JSON.stringify({ type: 'typing', receiver_id: selectedUserId })); typingTimeout = setTimeout(() => { socket.send(JSON.stringify({ type: 'stop_typing', receiver_id: selectedUserId })); }, 2000); });
     document.querySelector('#chat-header .user-info').addEventListener('click', () => { if(selectedUserId && window.innerWidth > 1200) renderProfileSidebar(selectedUserId); });
@@ -423,7 +447,6 @@ document.addEventListener('DOMContentLoaded', () => {
     answerCallBtn.addEventListener('click', async () => { if (!incomingCallData) return; closeModal(incomingCallModal); const chatToSelect = document.querySelector(`#chats-list li[data-user-id='${incomingCallData.sender_id}']`); if(chatToSelect) chatToSelect.click(); try { const constraints = incomingCallData.offer.sdp.includes('m=video') ? { audio: true, video: true } : { audio: true, video: false }; localStream = await navigator.mediaDevices.getUserMedia(constraints); localVideo.srcObject = localStream; toggleVideoBtn.classList.toggle('active', constraints.video); localVideo.style.display = constraints.video ? 'block' : 'none'; toggleMicBtn.classList.add('active'); videoCallContainer.classList.remove('hidden'); chatContent.classList.add('hidden'); createPeerConnection(); await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingCallData.offer)); const answer = await peerConnection.createAnswer(); await peerConnection.setLocalDescription(answer); socket.send(JSON.stringify({ type: 'call-answer', receiver_id: incomingCallData.sender_id, answer: answer })); incomingCallData = null; } catch (error) { console.error("Ошибка при ответе на звонок:", error); } });
     declineCallBtn.addEventListener('click', () => { if (incomingCallData) { socket.send(JSON.stringify({ type: 'hang-up', receiver_id: incomingCallData.sender_id })); } closeModal(incomingCallModal); incomingCallData = null; });
     
-    // НОВЫЕ ОБРАБОТЧИКИ для настроек
     settingsBtn.addEventListener('click', () => showModal(settingsModal));
     soundNotificationsToggle.addEventListener('change', async (e) => {
         const enabled = e.target.checked;
@@ -437,14 +460,139 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('Настройки сохранены', 'success');
         } catch (error) {
             showToast('Не удалось сохранить настройки', 'error');
-            // Возвращаем переключатель в исходное состояние
             e.target.checked = !enabled;
             userSettings.soundNotifications = !enabled;
         }
     });
 
+    document.body.addEventListener('click', async (e) => {
+        if (e.target.matches('#edit-profile-btn')) { const res = await apiRequest(`/api/users/me`); const user = await res.json(); usernameInput.value = user.username; bioInput.value = user.bio || ''; avatarPreview.src = getAvatarUrl(user.profile_picture_url); showModal(editProfileModal); }
+        if (e.target.matches('#change-password-btn')) showModal(changePasswordModal);
+        if (e.target.closest('.modal-close-btn')) e.target.closest('.modal-overlay').classList.add('hidden');
+        if (e.target.matches('#upload-photo-btn')) document.getElementById('photo-upload-input').click();
+        const photo = e.target.closest('.message-img, .photo-grid-item img'); if (photo) { photoViewerImg.src = photo.src; showModal(photoViewerModal); }
+        if (!messageContextMenu.contains(e.target)) { messageContextMenu.classList.add('hidden'); }
+    });
+
+    messagesContainer.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        const messageBubble = e.target.closest('.message-content-wrapper');
+        if (!messageBubble) return;
+        const messageWrapper = messageBubble.closest('.message-wrapper');
+        const isSent = messageWrapper.classList.contains('sent');
+        const isDeleted = messageWrapper.querySelector('.message-content.deleted');
+        if (isDeleted) return;
+        messageContextMenu.querySelector('[data-action="edit"]').style.display = isSent ? 'block' : 'none';
+        messageContextMenu.querySelector('[data-action="delete"]').style.display = isSent ? 'block' : 'none';
+        contextMessage = messageWrapper;
+        messageContextMenu.style.top = `${e.clientY}px`;
+        messageContextMenu.style.left = `${e.clientX}px`;
+        messageContextMenu.classList.remove('hidden');
+    });
+
+    messageContextMenu.addEventListener('click', e => {
+        if (!contextMessage) return;
+        const action = e.target.dataset.action;
+        const msgId = contextMessage.dataset.messageId;
+        const contentEl = contextMessage.querySelector('.message-content');
+        if (action === 'delete') { socket.send(JSON.stringify({ type: 'delete_message', messageId: msgId, receiver_id: selectedUserId })); }
+        else if (action === 'edit') { editingMessage = { id: msgId, content: contentEl.textContent }; editMessageInput.value = editingMessage.content; showModal(editMessageModal); }
+        else if (action === 'reply') { replyingToMessage = { id: msgId, content: contentEl.textContent.substring(0, 50) + '...' }; replyTextPreview.textContent = replyingToMessage.content; replyPreviewBar.classList.remove('hidden'); messageInput.focus(); }
+        messageContextMenu.classList.add('hidden');
+    });
+    
+    saveEditedMessageBtn.addEventListener('click', () => { const newContent = editMessageInput.value.trim(); if (newContent && editingMessage) { socket.send(JSON.stringify({ type: 'edit_message', messageId: editingMessage.id, newContent: newContent, receiver_id: selectedUserId })); } closeModal(editMessageModal); editingMessage = null; });
+    cancelReplyBtn.addEventListener('click', () => { replyingToMessage = null; replyPreviewBar.classList.add('hidden'); });
+    toggleMicBtn.addEventListener('click', () => { if (!localStream) return; const audioTrack = localStream.getAudioTracks()[0]; audioTrack.enabled = !audioTrack.enabled; toggleMicBtn.classList.toggle('active', audioTrack.enabled); feather.replace(); });
+    toggleVideoBtn.addEventListener('click', () => { if (!localStream) return; const videoTrack = localStream.getVideoTracks()[0]; videoTrack.enabled = !videoTrack.enabled; toggleVideoBtn.classList.toggle('active', videoTrack.enabled); localVideo.style.display = videoTrack.enabled ? 'block' : 'none'; feather.replace(); });
+    hangUpBtn.addEventListener('click', hangUp);
+    
+    backToChatsBtn.addEventListener('click', () => {
+        document.body.classList.remove('mobile-chat-view');
+        selectedUserId = null;
+        backToChatsBtn.classList.add('hidden');
+        profileInfoBtn.classList.add('hidden');
+    });
+    profileInfoBtn.addEventListener('click', async () => { 
+        if (!selectedUserId) return; 
+        profileModalContent.innerHTML = profileSidebar.innerHTML; 
+        profileModalMobile.classList.add('open'); 
+        feather.replace(); 
+    });
+    closeProfileModalBtn.addEventListener('click', () => { 
+        profileModalMobile.classList.remove('open'); 
+    });
+
+    editProfileForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+            // Сначала обновляем текстовые данные
+            const textUpdateRes = await apiRequest('/api/users/profile', {
+                method: 'PUT',
+                body: JSON.stringify({ username: usernameInput.value, bio: bioInput.value })
+            });
+            if (!textUpdateRes.ok) throw new Error('Ошибка обновления профиля');
+
+            // Затем, если выбран файл, загружаем аватар
+            if (avatarInput.files.length > 0) {
+                const formData = new FormData();
+                formData.append('avatar', avatarInput.files[0]);
+                // ИЗМЕНЕНО: Используем apiUploadRequest для загрузки аватара
+                const avatarUpdateRes = await apiUploadRequest('/api/users/profile/picture', {
+                    method: 'PUT',
+                    body: formData
+                });
+                if (!avatarUpdateRes.ok) throw new Error('Ошибка загрузки аватара');
+            }
+            
+            closeModal(editProfileModal);
+            showToast('Профиль успешно обновлен', 'success');
+            await renderChats();
+            await renderProfileSidebar(currentUser.id);
+
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    });
+
+    avatarInput.addEventListener('change', () => { if (avatarInput.files[0]) { const reader = new FileReader(); reader.onload = (e) => { avatarPreview.src = e.target.result; }; reader.readAsDataURL(avatarInput.files[0]); } });
+    changePasswordForm.addEventListener('submit', async(e) => { e.preventDefault(); const oldPassword = changePasswordForm.querySelector('#old-password-input').value, newPassword = changePasswordForm.querySelector('#new-password-input').value; const res = await apiRequest('/api/users/password', { method: 'PUT', body: JSON.stringify({ oldPassword, newPassword }) }); const data = await res.json(); if (!res.ok) return showToast(data.message, 'error'); showToast('Пароль успешно изменен!', 'success'); closeModal(changePasswordModal); changePasswordForm.reset(); });
+    
+    document.body.addEventListener('change', async (e) => {
+        // Загрузка фото в галерею
+        if (e.target.matches('#photo-upload-input') && e.target.files.length > 0) {
+            const formData = new FormData();
+            formData.append('photo', e.target.files[0]);
+            // ИЗМЕНЕНО: Используем apiUploadRequest для загрузки фото в галерею
+            const res = await apiUploadRequest('/api/photos', { method: 'POST', body: formData });
+            if (res.ok) {
+                showToast('Фото загружено!', 'success');
+                await renderProfileSidebar(currentUser.id);
+            } else {
+                showToast('Ошибка загрузки фото.', 'error');
+            }
+            e.target.value = '';
+        }
+        // Загрузка фото в сообщение
+        if (e.target.matches('#image-upload-input') && e.target.files.length > 0) {
+            const formData = new FormData();
+            formData.append('photo', e.target.files[0]);
+            // ИЗМЕНЕНО: Используем apiUploadRequest для загрузки фото в сообщение
+            const res = await apiUploadRequest('/api/photos', { method: 'POST', body: formData });
+            if (!res.ok) return showToast('Ошибка загрузки', 'error');
+            const data = await res.json();
+            socket.send(JSON.stringify({ type: 'message', receiver_id: selectedUserId, content: data.filename, messageType: 'image' }));
+            e.target.value = '';
+        }
+    });
+    
+    attachFileBtn.addEventListener('click', () => imageUploadInput.click());
+    photoViewerClose.addEventListener('click', () => closeModal(photoViewerModal));
+    emojiBtn.addEventListener('click', (event) => { event.stopPropagation(); emojiPickerContainer.classList.toggle('hidden'); });
+    document.querySelector('emoji-picker').addEventListener('emoji-click', event => { messageInput.value += event.detail.unicode; messageInput.focus(); });
+    document.addEventListener('click', (event) => { if (!emojiPickerContainer.contains(event.target) && !emojiBtn.contains(event.target)) { emojiPickerContainer.classList.add('hidden'); } });
+
     // --- ИНИЦИАЛИЗАЦИЯ ---
-    // ИЗМЕНЕНО: Загружает оба токена
     const savedAccessToken = localStorage.getItem('accessToken');
     const savedRefreshToken = localStorage.getItem('refreshToken');
     const savedUser = localStorage.getItem('user');
@@ -458,7 +606,3 @@ document.addEventListener('DOMContentLoaded', () => {
         showAuthView();
     }
 });
-
-// Все остальные обработчики (контекстное меню, модальные окна и т.д.) остаются,
-// но их вызовы fetch заменены на apiRequest для автоматической обработки токенов.
-// Этот код не показан для краткости, но подразумевается, что все fetch были заменены.

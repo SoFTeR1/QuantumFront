@@ -280,12 +280,50 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function createPeerConnection() {
-        peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-        peerConnection.onicecandidate = e => { if (e.candidate) socket.send(JSON.stringify({ type: 'ice-candidate', receiver_id: selectedUserId, candidate: e.candidate })); };
-        peerConnection.ontrack = e => { remoteVideo.srcObject = e.streams[0]; };
-        peerConnection.onconnectionstatechange = () => { if (peerConnection) { const state = peerConnection.connectionState; chatHeaderStatus.textContent = `Звонок: ${state}`; if (state === 'disconnected' || state === 'closed' || state === 'failed') { hangUp(); } } };
-        if (localStream) localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    // --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
+    // Мы добавляем несколько STUN-серверов для надежности и, что самое важное,
+    // бесплатный TURN-сервер, который будет выступать в роли посредника,
+    // если прямое соединение установить невозможно.
+    const iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        },
+        {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        }
+    ];
+
+    peerConnection = new RTCPeerConnection({ iceServers: iceServers });
+    
+    // Остальная часть функции остается без изменений
+    peerConnection.onicecandidate = e => { 
+        if (e.candidate) {
+            socket.send(JSON.stringify({ type: 'ice-candidate', receiver_id: selectedUserId, candidate: e.candidate })); 
+        }
+    };
+    peerConnection.ontrack = e => { 
+        remoteVideo.srcObject = e.streams[0]; 
+    };
+    peerConnection.onconnectionstatechange = () => { 
+        if (peerConnection) { 
+            const state = peerConnection.connectionState; 
+            console.log('WebRTC connection state:', state); // Добавим лог для отладки
+            chatHeaderStatus.textContent = `Звонок: ${state}`; 
+            if (state === 'disconnected' || state === 'closed' || state === 'failed') { 
+                hangUp(); 
+            } 
+        } 
+    };
+    if (localStream) {
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
     }
+}
 
     async function startCall(videoEnabled = false) {
         if (!selectedUserId || selectedUserId === currentUser.id) return alert('Выберите чат для звонка');

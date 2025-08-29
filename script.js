@@ -1,4 +1,4 @@
-// frontend/script.js (ФИНАЛЬНАЯ ВЕРСИЯ 5.0 - ЭФФЕКТНЫЙ ЗВОНОК)
+// frontend/script.js (ФИНАЛЬНАЯ ВЕРСИЯ 6.0 - КЛАССИЧЕСКИЙ ЗВОНОК)
 document.addEventListener('DOMContentLoaded', () => {
     feather.replace();
 
@@ -42,7 +42,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const incomingCallSound = document.getElementById('incoming-call-sound');
     const callEndedSound = document.getElementById('call-ended-sound');
     const callerAvatar = document.getElementById('caller-avatar');
-    const callBackgroundAvatar = document.getElementById('call-background-avatar');
 
     // --- ГЛОБАЛЬНОЕ СОСТОЯНИЕ ---
     let accessToken = null, refreshToken = null, currentUser = null, userSettings = { soundNotifications: true };
@@ -249,9 +248,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function startCall(videoEnabled = false) {
         if (!selectedUserId || selectedUserId === currentUser.id) return showToast('Выберите чат для звонка', 'error');
         try {
-            const chatHeaderAvatarSrc = chatHeaderAvatar.src;
-            callBackgroundAvatar.src = chatHeaderAvatarSrc;
-            videoCallContainer.classList.add('active');
             createPeerConnection();
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: videoEnabled });
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
@@ -274,8 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
         remoteVideo.srcObject = null;
         localVideo.srcObject = null;
         if (selectedUserId && socket && socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify({ type: 'hang-up', receiver_id: selectedUserId })); }
-        videoCallContainer.classList.remove('active');
-        setTimeout(() => { videoCallContainer.classList.add('hidden'); }, 500);
+        videoCallContainer.classList.add('hidden');
         if (selectedUserId) { chatContent.classList.remove('hidden'); updateUserOnlineStatus(selectedUserId, onlineUsers.has(selectedUserId)); } else { welcomeScreen.classList.remove('hidden'); }
         closeModal(incomingCallModal);
         incomingCallData = null;
@@ -346,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('#chat-header .user-info').addEventListener('click', () => { if(selectedUserId && window.innerWidth > 1200) renderProfileSidebar(selectedUserId); });
     audioCallBtn.addEventListener('click', () => startCall(false));
     videoCallBtn.addEventListener('click', () => startCall(true));
-    answerCallBtn.addEventListener('click', async () => { incomingCallSound.pause(); incomingCallSound.currentTime = 0; if (!incomingCallData) return; const { offer, sender_id } = incomingCallData; incomingCallData = null; closeModal(incomingCallModal); const chatToSelect = document.querySelector(`#chats-list li[data-user-id='${sender_id}']`); if (chatToSelect) chatToSelect.click(); try { callBackgroundAvatar.src = callerAvatar.src; videoCallContainer.classList.add('active'); createPeerConnection(); await peerConnection.setRemoteDescription(new RTCSessionDescription(offer)); const constraints = offer.sdp.includes('m=video') ? { audio: true, video: true } : { audio: true, video: false }; localStream = await navigator.mediaDevices.getUserMedia(constraints); localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream)); localVideo.srcObject = localStream; const answer = await peerConnection.createAnswer(); await peerConnection.setLocalDescription(answer); await processIceCandidateQueue(); socket.send(JSON.stringify({ type: 'call-answer', receiver_id: sender_id, answer })); videoCallContainer.classList.remove('hidden'); chatContent.classList.add('hidden'); toggleVideoBtn.classList.toggle('active', constraints.video); localVideo.style.display = constraints.video ? 'block' : 'none'; toggleMicBtn.classList.add('active'); } catch (error) { console.error("Ошибка при ответе на звонок:", error); showToast('Ошибка при ответе на звонок.', 'error'); hangUp(); } });
+    answerCallBtn.addEventListener('click', async () => { incomingCallSound.pause(); incomingCallSound.currentTime = 0; if (!incomingCallData) return; const { offer, sender_id } = incomingCallData; incomingCallData = null; closeModal(incomingCallModal); const chatToSelect = document.querySelector(`#chats-list li[data-user-id='${sender_id}']`); if (chatToSelect) chatToSelect.click(); try { createPeerConnection(); await peerConnection.setRemoteDescription(new RTCSessionDescription(offer)); const constraints = offer.sdp.includes('m=video') ? { audio: true, video: true } : { audio: true, video: false }; localStream = await navigator.mediaDevices.getUserMedia(constraints); localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream)); localVideo.srcObject = localStream; const answer = await peerConnection.createAnswer(); await peerConnection.setLocalDescription(answer); await processIceCandidateQueue(); socket.send(JSON.stringify({ type: 'call-answer', receiver_id: sender_id, answer })); videoCallContainer.classList.remove('hidden'); chatContent.classList.add('hidden'); toggleVideoBtn.classList.toggle('active', constraints.video); localVideo.style.display = constraints.video ? 'block' : 'none'; toggleMicBtn.classList.add('active'); } catch (error) { console.error("Ошибка при ответе на звонок:", error); showToast('Ошибка при ответе на звонок.', 'error'); hangUp(); } });
     declineCallBtn.addEventListener('click', () => { incomingCallSound.pause(); incomingCallSound.currentTime = 0; if (incomingCallData) { socket.send(JSON.stringify({ type: 'hang-up', receiver_id: incomingCallData.sender_id })); } closeModal(incomingCallModal); incomingCallData = null; });
     settingsBtn.addEventListener('click', () => showModal(settingsModal));
     soundNotificationsToggle.addEventListener('change', async (e) => { const enabled = e.target.checked; userSettings.soundNotifications = enabled; try { const res = await apiRequest('/api/users/settings', { method: 'PUT', body: JSON.stringify({ soundNotifications: enabled }) }); if (!res.ok) throw new Error('Failed to save settings'); showToast('Настройки сохранены', 'success'); } catch (error) { showToast('Не удалось сохранить настройки', 'error'); e.target.checked = !enabled; userSettings.soundNotifications = !enabled; } });

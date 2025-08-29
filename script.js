@@ -1,4 +1,4 @@
-// frontend/script.js (ФИНАЛЬНАЯ ВЕРСИЯ 6.0 - КЛАССИЧЕСКИЙ ЗВОНОК)
+// frontend/script.js (ФИНАЛЬНАЯ ВЕРСИЯ 6.0 - АВАТАРЫ В ЗВОНКЕ)
 document.addEventListener('DOMContentLoaded', () => {
     feather.replace();
 
@@ -42,6 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const incomingCallSound = document.getElementById('incoming-call-sound');
     const callEndedSound = document.getElementById('call-ended-sound');
     const callerAvatar = document.getElementById('caller-avatar');
+    const remoteAvatarPlaceholder = document.getElementById('remote-avatar-placeholder');
+    const localAvatarPlaceholder = document.getElementById('local-avatar-placeholder');
 
     // --- ГЛОБАЛЬНОЕ СОСТОЯНИЕ ---
     let accessToken = null, refreshToken = null, currentUser = null, userSettings = { soundNotifications: true };
@@ -233,7 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
             { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
         ];
         peerConnection = new RTCPeerConnection({ iceServers });
-        peerConnection.ontrack = event => { if (remoteVideo.srcObject !== event.streams[0]) { remoteVideo.srcObject = event.streams[0]; } };
+        peerConnection.ontrack = event => { if (remoteVideo.srcObject !== event.streams[0]) { remoteVideo.srcObject = event.streams[0]; remoteAvatarPlaceholder.classList.add('hidden'); } };
         peerConnection.onicecandidate = event => { if (event.candidate) { socket.send(JSON.stringify({ type: 'ice-candidate', receiver_id: selectedUserId, candidate: event.candidate })); } };
         peerConnection.onconnectionstatechange = () => {
             if (peerConnection) {
@@ -248,6 +250,10 @@ document.addEventListener('DOMContentLoaded', () => {
     async function startCall(videoEnabled = false) {
         if (!selectedUserId || selectedUserId === currentUser.id) return showToast('Выберите чат для звонка', 'error');
         try {
+            remoteAvatarPlaceholder.querySelector('img').src = chatHeaderAvatar.src;
+            localAvatarPlaceholder.querySelector('img').src = getAvatarUrl(currentUser.profile_picture_url);
+            remoteAvatarPlaceholder.classList.remove('hidden');
+            localAvatarPlaceholder.classList.remove('hidden');
             createPeerConnection();
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: videoEnabled });
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
@@ -256,6 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
             chatContent.classList.add('hidden');
             toggleVideoBtn.classList.toggle('active', videoEnabled);
             localVideo.style.display = videoEnabled ? 'block' : 'none';
+            localAvatarPlaceholder.style.display = videoEnabled ? 'none' : 'block';
             toggleMicBtn.classList.add('active');
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
@@ -269,6 +276,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
         remoteVideo.srcObject = null;
         localVideo.srcObject = null;
+        remoteAvatarPlaceholder.classList.add('hidden');
+        localAvatarPlaceholder.classList.add('hidden');
         if (selectedUserId && socket && socket.readyState === WebSocket.OPEN) { socket.send(JSON.stringify({ type: 'hang-up', receiver_id: selectedUserId })); }
         videoCallContainer.classList.add('hidden');
         if (selectedUserId) { chatContent.classList.remove('hidden'); updateUserOnlineStatus(selectedUserId, onlineUsers.has(selectedUserId)); } else { welcomeScreen.classList.remove('hidden'); }
@@ -341,7 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('#chat-header .user-info').addEventListener('click', () => { if(selectedUserId && window.innerWidth > 1200) renderProfileSidebar(selectedUserId); });
     audioCallBtn.addEventListener('click', () => startCall(false));
     videoCallBtn.addEventListener('click', () => startCall(true));
-    answerCallBtn.addEventListener('click', async () => { incomingCallSound.pause(); incomingCallSound.currentTime = 0; if (!incomingCallData) return; const { offer, sender_id } = incomingCallData; incomingCallData = null; closeModal(incomingCallModal); const chatToSelect = document.querySelector(`#chats-list li[data-user-id='${sender_id}']`); if (chatToSelect) chatToSelect.click(); try { createPeerConnection(); await peerConnection.setRemoteDescription(new RTCSessionDescription(offer)); const constraints = offer.sdp.includes('m=video') ? { audio: true, video: true } : { audio: true, video: false }; localStream = await navigator.mediaDevices.getUserMedia(constraints); localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream)); localVideo.srcObject = localStream; const answer = await peerConnection.createAnswer(); await peerConnection.setLocalDescription(answer); await processIceCandidateQueue(); socket.send(JSON.stringify({ type: 'call-answer', receiver_id: sender_id, answer })); videoCallContainer.classList.remove('hidden'); chatContent.classList.add('hidden'); toggleVideoBtn.classList.toggle('active', constraints.video); localVideo.style.display = constraints.video ? 'block' : 'none'; toggleMicBtn.classList.add('active'); } catch (error) { console.error("Ошибка при ответе на звонок:", error); showToast('Ошибка при ответе на звонок.', 'error'); hangUp(); } });
+    answerCallBtn.addEventListener('click', async () => { incomingCallSound.pause(); incomingCallSound.currentTime = 0; if (!incomingCallData) return; const { offer, sender_id } = incomingCallData; incomingCallData = null; closeModal(incomingCallModal); const chatToSelect = document.querySelector(`#chats-list li[data-user-id='${sender_id}']`); if (chatToSelect) chatToSelect.click(); try { remoteAvatarPlaceholder.querySelector('img').src = callerAvatar.src; localAvatarPlaceholder.querySelector('img').src = getAvatarUrl(currentUser.profile_picture_url); remoteAvatarPlaceholder.classList.remove('hidden'); localAvatarPlaceholder.classList.remove('hidden'); createPeerConnection(); await peerConnection.setRemoteDescription(new RTCSessionDescription(offer)); const constraints = offer.sdp.includes('m=video') ? { audio: true, video: true } : { audio: true, video: false }; localStream = await navigator.mediaDevices.getUserMedia(constraints); localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream)); localVideo.srcObject = localStream; const answer = await peerConnection.createAnswer(); await peerConnection.setLocalDescription(answer); await processIceCandidateQueue(); socket.send(JSON.stringify({ type: 'call-answer', receiver_id: sender_id, answer })); videoCallContainer.classList.remove('hidden'); chatContent.classList.add('hidden'); toggleVideoBtn.classList.toggle('active', constraints.video); localVideo.style.display = constraints.video ? 'block' : 'none'; localAvatarPlaceholder.style.display = constraints.video ? 'none' : 'block'; toggleMicBtn.classList.add('active'); } catch (error) { console.error("Ошибка при ответе на звонок:", error); showToast('Ошибка при ответе на звонок.', 'error'); hangUp(); } });
     declineCallBtn.addEventListener('click', () => { incomingCallSound.pause(); incomingCallSound.currentTime = 0; if (incomingCallData) { socket.send(JSON.stringify({ type: 'hang-up', receiver_id: incomingCallData.sender_id })); } closeModal(incomingCallModal); incomingCallData = null; });
     settingsBtn.addEventListener('click', () => showModal(settingsModal));
     soundNotificationsToggle.addEventListener('change', async (e) => { const enabled = e.target.checked; userSettings.soundNotifications = enabled; try { const res = await apiRequest('/api/users/settings', { method: 'PUT', body: JSON.stringify({ soundNotifications: enabled }) }); if (!res.ok) throw new Error('Failed to save settings'); showToast('Настройки сохранены', 'success'); } catch (error) { showToast('Не удалось сохранить настройки', 'error'); e.target.checked = !enabled; userSettings.soundNotifications = !enabled; } });
@@ -351,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
     saveEditedMessageBtn.addEventListener('click', () => { const newContent = editMessageInput.value.trim(); if (newContent && editingMessage) { socket.send(JSON.stringify({ type: 'edit_message', messageId: editingMessage.id, newContent: newContent, receiver_id: selectedUserId })); } closeModal(editMessageModal); editingMessage = null; });
     cancelReplyBtn.addEventListener('click', () => { replyingToMessage = null; replyPreviewBar.classList.add('hidden'); });
     toggleMicBtn.addEventListener('click', () => { if (!localStream) return; const audioTrack = localStream.getAudioTracks()[0]; audioTrack.enabled = !audioTrack.enabled; toggleMicBtn.classList.toggle('active', audioTrack.enabled); feather.replace(); });
-    toggleVideoBtn.addEventListener('click', () => { if (!localStream) return; const videoTrack = localStream.getVideoTracks()[0]; videoTrack.enabled = !videoTrack.enabled; toggleVideoBtn.classList.toggle('active', videoTrack.enabled); localVideo.style.display = videoTrack.enabled ? 'block' : 'none'; feather.replace(); });
+    toggleVideoBtn.addEventListener('click', () => { if (!localStream) return; const videoTrack = localStream.getVideoTracks()[0]; videoTrack.enabled = !videoTrack.enabled; toggleVideoBtn.classList.toggle('active', videoTrack.enabled); localVideo.style.display = videoTrack.enabled ? 'block' : 'none'; localAvatarPlaceholder.style.display = videoTrack.enabled ? 'none' : 'block'; feather.replace(); });
     hangUpBtn.addEventListener('click', hangUp);
     backToChatsBtn.addEventListener('click', () => { document.body.classList.remove('mobile-chat-view'); selectedUserId = null; backToChatsBtn.classList.add('hidden'); profileInfoBtn.classList.add('hidden'); });
     profileInfoBtn.addEventListener('click', async () => { if (!selectedUserId) return; profileModalContent.innerHTML = profileSidebar.innerHTML; profileModalMobile.classList.add('open'); feather.replace(); });

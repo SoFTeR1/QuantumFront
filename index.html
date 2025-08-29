@@ -47,6 +47,14 @@
 
             <main id="chat-window">
                 <div id="video-call-container" class="hidden">
+                    <div id="remote-avatar-placeholder" class="avatar-placeholder hidden">
+                        <img src="" alt="Remote User">
+                        <span>Соединение...</span>
+                    </div>
+                    <div id="local-avatar-placeholder" class="avatar-placeholder hidden">
+                        <img src="" alt="Local User">
+                    </div>
+
                     <video id="remote-video" autoplay playsinline></video>
                     <video id="local-video" autoplay playsinline muted></video>
                     <div class="call-controls">

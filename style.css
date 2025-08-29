@@ -159,6 +159,15 @@ input:checked + .slider:before { transform: translateX(22px); }
 .button-decline { background-color: var(--accent-danger); color: white; }
 .call-modal .modal-actions button svg { width: 28px; height: 28px; }
 #call-timer { font-size: 14px; color: var(--accent-success); font-weight: 500; animation: fade-in 0.3s; }
+.avatar-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--text-secondary); position: absolute; transition: opacity 0.3s ease-in-out; }
+.avatar-placeholder img { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid var(--border-color-strong); }
+#remote-avatar-placeholder { z-index: 1; }
+#local-avatar-placeholder { bottom: 20px; right: 20px; z-index: 3; }
+#local-avatar-placeholder img { width: 200px; height: 150px; border-radius: 12px; }
+#remote-video, #local-video { background-color: transparent; }
+#remote-video:not([srcObject]), #local-video:not([srcObject]) { opacity: 0; }
+#remote-video { position: relative; z-index: 2; }
+#local-video { position: absolute; z-index: 4; }
 @media (max-width: 1200px) { #main-view { grid-template-columns: 320px 1fr; } #profile-sidebar { display: none; } }
 @media (max-width: 768px) {
     #app-container { padding: 0; height: 100%; }

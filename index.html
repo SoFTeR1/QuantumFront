@@ -32,10 +32,13 @@
                         <div class="status-indicator"></div>
                         <span class="brand-name">Quantum</span>
                     </div>
-                    <input type="text" id="search-input" placeholder="Поиск...">
+                    <input type="text" id="search-input" placeholder="Поиск пользователей...">
+                </div>
+                <div id="search-results-container" class="hidden">
+                    <h3>Результаты поиска</h3>
+                    <ul id="search-results-list" class="entity-list"></ul>
                 </div>
                 <div id="chats-list-container"><h3>Чаты</h3><ul id="chats-list" class="entity-list"></ul></div>
-                <!-- НОВОЕ: Кнопка настроек добавлена рядом с выходом -->
                 <div class="sidebar-footer">
                     <button id="settings-button" class="icon-btn" title="Настройки"><i data-feather="settings"></i></button>
                     <button id="logout-button" class="icon-btn" title="Выйти"><i data-feather="log-out"></i></button>
@@ -58,7 +61,7 @@
                 <div id="chat-content" class="hidden">
                     <div id="chat-header">
                         <button id="back-to-chats-btn" class="icon-btn hidden"><i data-feather="arrow-left"></i></button>
-                        <div class="user-info"><img src="" alt="" class="avatar" id="chat-header-avatar"><div><h2 id="chat-header-username"></h2><span id="chat-header-status"></span></div></div>
+                        <div class="user-info"><img src="" alt="" class="avatar" id="chat-header-avatar"><div><h2 id="chat-header-username"></h2><div id="chat-header-status-container"><span id="chat-header-status"></span></div></div></div>
                         <div id="call-actions">
                             <button id="audio-call-btn" class="icon-btn" title="Аудиозвонок"><i data-feather="phone"></i></button>
                             <button id="video-call-btn" class="icon-btn" title="Видеозвонок"><i data-feather="video"></i></button>
@@ -96,37 +99,38 @@
         <div id="profile-modal-content" class="profile-sidebar-content"></div>
     </div>
     <div id="edit-message-modal" class="modal-overlay hidden"><div class="modal-content"><button class="modal-close-btn icon-btn"><i data-feather="x"></i></button><h2>Редактировать сообщение</h2><textarea id="edit-message-input" rows="4"></textarea><div class="modal-actions"><button id="save-edited-message-btn" class="button-primary">Сохранить</button></div></div></div>
-    <div id="incoming-call-modal" class="modal-overlay hidden"><div class="modal-content call-modal"><h2>Входящий звонок</h2><p>Вам звонит <span id="caller-name"></span></p><div class="modal-actions"><button id="answer-call-btn" class="button-answer"><i data-feather="phone"></i>Ответить</button><button id="decline-call-btn" class="button-decline"><i data-feather="phone-off"></i>Отклонить</button></div></div></div>
-    <div id="photo-viewer-modal" class="modal-overlay hidden"><img src="" id="photo-viewer-img" alt="Просмотр фото"><button id="photo-viewer-close" class="modal-close-btn icon-btn"><i data-feather="x"></i></button></div>
-    <div id="edit-profile-modal" class="modal-overlay hidden"><div class="modal-content"><button class="modal-close-btn icon-btn"><i data-feather="x"></i></button><h2>Редактирование профиля</h2><form id="edit-profile-form"><div class="avatar-upload"><img src="" alt="Аватар" id="avatar-preview" class="avatar"><label for="avatar-input" class="avatar-upload-label">Сменить фото</label><input type="file" id="avatar-input" accept="image/*"></div><label for="username-input">Имя пользователя</label><input type="text" id="username-input" required><label for="bio-input">О себе</label><textarea id="bio-input" rows="3"></textarea><div class="modal-actions"><button type="submit" class="button-primary">Сохранить</button></div></form></div></div>
-    <div id="change-password-modal" class="modal-overlay hidden"><div class="modal-content"><button class="modal-close-btn icon-btn"><i data-feather="x"></i></button><h2>Смена пароля</h2><form id="change-password-form"><label for="old-password-input">Старый пароль</label><input type="password" id="old-password-input" required><label for="new-password-input">Новый пароль</label><input type="password" id="new-password-input" required><div class="modal-actions"><button type="submit" class="button-primary">Сменить</button></div></form></div></div>
     
-    <!-- НОВОЕ: Модальное окно настроек -->
-    <div id="settings-modal" class="modal-overlay hidden">
-        <div class="modal-content">
-            <button class="modal-close-btn icon-btn"><i data-feather="x"></i></button>
-            <h2>Настройки</h2>
-            <div class="setting-item">
-                <label for="sound-notifications-toggle">Звуковые уведомления</label>
-                <label class="switch">
-                    <input type="checkbox" id="sound-notifications-toggle">
-                    <span class="slider round"></span>
-                </label>
+    <div id="incoming-call-modal" class="modal-overlay hidden">
+        <div class="modal-content call-modal">
+            <div class="caller-info">
+                <img src="" id="caller-avatar" class="avatar" alt="Caller Avatar">
+                <h2>Входящий звонок</h2>
+                <p>Вам звонит <strong id="caller-name"></strong></p>
+            </div>
+            <div class="modal-actions">
+                <button id="answer-call-btn" class="button-answer" title="Ответить"><i data-feather="phone"></i></button>
+                <button id="decline-call-btn" class="button-decline" title="Отклонить"><i data-feather="phone-off"></i></button>
             </div>
         </div>
     </div>
-    
+
+    <div id="photo-viewer-modal" class="modal-overlay hidden"><img src="" id="photo-viewer-img" alt="Просмотр фото"><button id="photo-viewer-close" class="modal-close-btn icon-btn"><i data-feather="x"></i></button></div>
+    <div id="edit-profile-modal" class="modal-overlay hidden"><div class="modal-content"><button class="modal-close-btn icon-btn"><i data-feather="x"></i></button><h2>Редактирование профиля</h2><form id="edit-profile-form"><div class="avatar-upload"><img src="" alt="Аватар" id="avatar-preview" class="avatar"><label for="avatar-input" class="avatar-upload-label">Сменить фото</label><input type="file" id="avatar-input" accept="image/*"></div><label for="username-input">Имя пользователя</label><input type="text" id="username-input" required><label for="bio-input">О себе</label><textarea id="bio-input" rows="3"></textarea><div class="modal-actions"><button type="submit" class="button-primary">Сохранить</button></div></form></div></div>
+    <div id="change-password-modal" class="modal-overlay hidden"><div class="modal-content"><button class="modal-close-btn icon-btn"><i data-feather="x"></i></button><h2>Смена пароля</h2><form id="change-password-form"><label for="old-password-input">Старый пароль</label><input type="password" id="old-password-input" required><label for="new-password-input">Новый пароль</label><input type="password" id="new-password-input" required><div class="modal-actions"><button type="submit" class="button-primary">Сменить</button></div></form></div></div>
+    <div id="settings-modal" class="modal-overlay hidden"><div class="modal-content"><button class="modal-close-btn icon-btn"><i data-feather="x"></i></button><h2>Настройки</h2><div class="setting-item"><label for="sound-notifications-toggle">Звуковые уведомления</label><label class="switch"><input type="checkbox" id="sound-notifications-toggle"><span class="slider round"></span></label></div></div></div>
+
     <ul id="message-context-menu" class="context-menu hidden">
         <li data-action="reply">Ответить</li>
         <li data-action="edit">Редактировать</li>
         <li data-action="delete">Удалить</li>
     </ul>
-
-    <!-- НОВОЕ: Контейнер для всплывающих уведомлений -->
+    
     <div id="toast-container"></div>
     
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
     <audio id="notification-sound" src="notification.mp3" preload="auto"></audio>
+    <audio id="incoming-call-sound" src="incoming-call.mp3" loop></audio>
+    <audio id="call-ended-sound" src="call-ended.mp3"></audio>
     <script src="script.js"></script>
 </body>
 </html>

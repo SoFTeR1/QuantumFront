@@ -49,7 +49,19 @@ document.addEventListener('DOMContentLoaded', () => {
     let isRefreshingToken = false; // Флаг для предотвращения многократного обновления токена
 
     // --- УТИЛИТАРНЫЕ ФУНКЦИИ ---
-    const getAvatarUrl = (filename) => (!filename || filename === 'default_avatar.png') ? 'default_avatar.png' : `https://quantum-6x3h.onrender.com/uploads/${filename}`;
+    const getAvatarUrl = (filename) => {
+    // Если filename уже является полным URL (от Cloudinary), просто возвращаем его
+    if (filename && filename.startsWith('http')) {
+        return filename;
+    }
+    // Если filename пустой или равен 'default_avatar.png', возвращаем URL на дефолтный аватар в Cloudinary
+    if (!filename || filename === 'default_avatar.png') {
+        // ВСТАВЬТЕ СЮДА URL ВАШЕГО ДЕФОЛТНОГО АВАТАРА ИЗ CLOUDINARY
+        return 'https://res.cloudinary.com/dxkgvsh77/image/upload/v1756488221/default_avatar_tdilkv.jpg';
+    }
+    // Этот случай больше не должен происходить, но оставим на всякий случай
+    return `https://quantum-6x3h.onrender.com/uploads/${filename}`;
+};
     const showModal = (modal) => modal.classList.remove('hidden');
     const closeModal = (modal) => modal.classList.add('hidden');
     
